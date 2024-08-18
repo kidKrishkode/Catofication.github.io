@@ -1,0 +1,21 @@
+{
+    "name": "Cavernous Hoax Scanner",
+    "short_name": "CHS",
+    "description": "Cavernous Hoax Scanner is a web-based platform that leverages JPEN stack technology to implement deep learning algorithms, specifically CNN, GANs, Relational regression.",
+    "icons": [
+        {
+            "src": "favicon.png",
+            "sizes": "1500x1500 16x16",
+            "type": "image/x-icon"
+        },
+        {
+            "src": "logo1500.png",
+            "type": "image/png",
+            "sizes": "1500x1500"
+        }
+    ],
+    "start_url": ".",
+    "display": "standalone",
+    "theme_color": "#22577aff",
+    "background_color": "#ffffff"
+}
