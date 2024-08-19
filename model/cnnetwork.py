@@ -1,10 +1,13 @@
 import os
+import json
+import sys
 import cv2
 import numpy as np
-import json
-import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.models import load_model
+from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 import Preprocessor
 import ast
@@ -23,68 +26,77 @@ def load_images_and_labels(weights_folder):
                 
                 for entry in data:
                     image_path = os.path.join(folder_path, entry['path'])
-                    image = cv2.imread(image_path)
+                    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
                     
                     if image is not None:
                         image = cv2.resize(image, (128, 128))
+                        image = image / 255.0
                         images.append(image)
                         labels.append(folder_name)
-    
+
     return np.array(images), np.array(labels)
-
-def preprocess_data(images, labels):
-    images = images / 255.0 
-    labels = np.array([1 if label == "dog" else 0 for label in labels]) 
-
-    return train_test_split(images, labels, test_size=0.5, random_state=42)
 
 def create_cnn_model():
     model = Sequential([
-        Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+        Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 1)),
         MaxPooling2D(pool_size=(2, 2)),
         Conv2D(64, (3, 3), activation='relu'),
         MaxPooling2D(pool_size=(2, 2)),
         Flatten(),
-        Dense(128, activation='relu'),
-        Dense(1, activation='sigmoid')
+        Dense(64, activation='relu'),
+        Dense(2, activation='softmax')
     ])
     
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
-def train_model(model, X_train, y_train, X_test, y_test):
+# Train the CNN model
+def train_cnn_model(images, labels, binary_labels):
+    model = create_cnn_model()
+    images = np.expand_dims(images, axis=-1)
+    binary_labels = to_categorical(binary_labels, 2)
+
+    X_train, X_test, y_train, y_test = train_test_split(images, binary_labels, test_size=0.2, random_state=42)
+    
     model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
     return model
 
-def classify_image(image_path, model):
-    image = cv2.imread(image_path)
+def classify_image(image_path, model_l1, model_l2):
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     image = cv2.resize(image, (128, 128))
-    image = np.expand_dims(image / 255.0, axis=0)
+    image = image / 255.0 
+    image = np.expand_dims(image, axis=-1)
     
-    prediction = model.predict(image)[0][0]
-    
-    if prediction > 0.7:
+    pred_l1 = model_l1.predict(np.expand_dims(image, axis=0))
+    dog_confidence = pred_l1[0][1]
+
+    if dog_confidence > 0.9:
         return "Dog"
-    elif prediction < 0.3:
+
+    pred_l2 = model_l2.predict(np.expand_dims(image, axis=0))
+    cat_confidence = pred_l2[0][1]
+
+    if cat_confidence > 0.9:
         return "Cat"
     else:
         return "Other"
 
 def classified_image(image_path):
-    if './model/main.py' in sys.argv[0]:
-        image_path, _ = [str(X) for X in image_path[0].split(',')]
-
-    weights_folder = './weight'
+    weights_folder = '../weight'
     
     images, labels = load_images_and_labels(weights_folder)
-    X_train, X_test, y_train, y_test = preprocess_data(images, labels)
     
-    cnn_model = create_cnn_model()
-    trained_model = train_model(cnn_model, X_train, y_train, X_test, y_test)
+    labels_l1 = np.array([1 if label == "dogs" else 0 for label in labels])  # Binary labels for L1 (Dog vs. Not-Dog)
+    model_l1 = train_cnn_model(images, labels, labels_l1)
+
+    labels_l2 = np.array([1 if label == "cats" else 0 for label in labels])  # Binary labels for L2 (Cat vs. Not-Cat)
+    model_l2 = train_cnn_model(images, labels, labels_l2)
     
-    result = classify_image(image_path, trained_model)
+    model_l1.save("dog_vs_not_dog_model.h5")
+    model_l2.save("cat_vs_not_cat_model.h5")
     
-    return result 
+    result = classify_image(image_path, model_l1, model_l2)
+    return result
 
 def main():
     if len(sys.argv) != 2:
